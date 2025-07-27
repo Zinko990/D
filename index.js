@@ -73,7 +73,6 @@ const TOKENS = {
   USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'  // Example USDC address (testnet မှာ ပြောင်းရမယ်)
 };
 
-const DODO_ROUTER = '0x6E2fc818brU6W3vYjeF8uQ3a8bW3eC7r1dQ8X0a'; // Example DODO router (testnet မှာ ပြောင်းရမယ်)
 const UNISWAP_ROUTER = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D'; // Example Uniswap V2 router (testnet မှာ ပြောင်းရမယ်)
 
 async function approveToken(wallet, tokenAddress, spender, amount) {
@@ -90,30 +89,18 @@ async function approveToken(wallet, tokenAddress, spender, amount) {
   }
 }
 
-async function fetchDodoRoute(fromToken, toToken, amount) {
-  try {
-    const response = await axios.get(`https://api.dodoex.io/v2/swap`, {
-      params: {
-        fromToken: fromToken,
-        toToken: toToken,
-        amount: amount.toString(),
-        chainId: PHAROS_CHAIN_ID
-      }
-    });
-    return response.data.route;
-  } catch (e) {
-    logger.error(`Failed to fetch DODO route: ${e.message}`);
-    throw e;
-  }
-}
-
 async function executeSwap(wallet, fromToken, toToken, amount) {
   logger.step(`Swapping ${ethers.formatUnits(amount, 6)} ${fromToken.slice(0, 6)} to ${toToken.slice(0, 6)}...`);
   try {
-    const router = new ethers.Contract(DODO_ROUTER, ['function swap(address fromToken, address toToken, uint256 amount, uint256 minReturn)'], wallet);
-    const route = await fetchDodoRoute(fromToken, toToken, amount);
-    const minReturn = route.minReturn; // Simplified, adjust based on actual API response
-    const tx = await router.swap(fromToken, toToken, amount, minReturn, { gasLimit: 300000 });
+    const router = new ethers.Contract(UNISWAP_ROUTER, [
+      'function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] path, address to, uint deadline) returns (uint[] amounts)'
+    ], wallet);
+    
+    await approveToken(wallet, fromToken, UNISWAP_ROUTER, amount);
+    const path = [fromToken, toToken];
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes deadline
+    const amountOutMin = 0; // Set a proper slippage tolerance in production
+    const tx = await router.swapExactTokensForTokens(amount, amountOutMin, path, wallet.address, deadline, { gasLimit: 300000 });
     await tx.wait();
     logger.success(`Swap successful! TX Hash: ${tx.hash}`);
     return true;
