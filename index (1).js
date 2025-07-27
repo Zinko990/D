@@ -4,7 +4,7 @@ const dotenv = require('dotenv');
 const readline = require('readline');
 const fs = require('fs');
 
-dotenv.config();
+dotenv.config(); // Initial load
 
 const ERC20_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
@@ -90,14 +90,21 @@ function getRandomUserAgent() {
 function loadPrivateKeys() {
   const keys = [];
   let i = 1;
+  // Force reload .env file
+  dotenv.config({ override: true }); // Override any cached values
   while (process.env[`PRIVATE_KEY_${i}`]) {
     const pk = process.env[`PRIVATE_KEY_${i}`];
+    console.log(`DEBUG: Found PRIVATE_KEY_${i}: ${pk}`); // Debug log
     if (pk.startsWith('0x') && pk.length === 66) {
       keys.push(pk);
     } else {
       logger.warn(`Invalid PRIVATE_KEY_${i} in .env, skipping...`);
     }
     i++;
+  }
+  console.log(`DEBUG: Loaded keys: ${keys.length} keys found`); // Show how many keys loaded
+  if (keys.length === 0) {
+    logger.error('No valid private keys found in .env. Please check PRIVATE_KEY_1, PRIVATE_KEY_2, etc.');
   }
   return keys;
 }
@@ -278,20 +285,22 @@ function question(query) {
   }
 
   try {
-    const wallet = new ethers.Wallet(privateKeys[0], provider);
-    logger.success(`Wallet loaded: ${wallet.address}`);
+    for (const privateKey of privateKeys) {
+      const wallet = new ethers.Wallet(privateKey, provider);
+      logger.success(`Wallet loaded: ${wallet.address}`);
 
-    while (true) {
-      const count = await question(`${colors.cyan}How many swaps to perform (PHRS-USDT/USDT-PHRS)? ${colors.reset}`);
-      try {
-        const countNum = parseInt(count);
-        if (isNaN(countNum) || countNum < 1) throw new Error('Invalid swap count');
-        await batchSwap(wallet, countNum);
-        logger.success('Swap cycle completed!');
-        logger.step('Waiting for next daily cycle...');
-        await showCountdown();
-      } catch (e) {
-        logger.error(`Error: ${e.message}`);
+      while (true) {
+        const count = await question(`${colors.cyan}How many swaps to perform (PHRS-USDT/USDT-PHRS)? ${colors.reset}`);
+        try {
+          const countNum = parseInt(count);
+          if (isNaN(countNum) || countNum < 1) throw new Error('Invalid swap count');
+          await batchSwap(wallet, countNum);
+          logger.success('Swap cycle completed!');
+          logger.step('Waiting for next daily cycle...');
+          await showCountdown();
+        } catch (e) {
+          logger.error(`Error: ${e.message}`);
+        }
       }
     }
   } catch (err) {
